@@ -1,0 +1,88 @@
+---
+title: "PML"
+author: "Daria Migunova"
+date: "22 мая 2015 г."
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+For the prediction I'm going to use caret library, as it was recommended by the course.
+
+```{r}
+library(caret)
+```
+
+First of all we have to load data sets. I preferred downloading them directly by URL instead of downloading to the computer. Library RCurl will help me to do that.
+
+```{r}
+library(RCurl)
+
+trainUrl <- getURL("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testUrl <- getURL("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+train <- read.csv(text = trainUrl,na.strings=c("NA",""))
+test <- read.csv(text = testUrl,na.strings=c("NA",""))
+```
+
+How many columns == possible features do we have here?
+```{r}
+ncol(train)
+```
+
+160, it is pretty much for learning. Let's see if we can get rid of unused ones.
+
+```{r}
+leave_these <- apply(!is.na(train), 2, sum) > 19000
+train <- train[, leave_these]
+test <- test[, leave_these]
+
+ncol(train)
+```
+
+60 columns, much better! Then let's get rid of dates and timestamps.
+
+```{r}
+train <- train[,6:60]
+test <- test[,6:60]
+```
+
+Then I have to split given training set into pure training set and testing set to evaluate off the sample error rate. p=0.3 is chosen less than recommended 0.6 to make the algorithm work faster.
+
+```{r}
+inTrain <- createDataPartition(y=train$classe, p=0.3, list=FALSE)
+train_train <- train[inTrain,]
+train_test <- train[-inTrain,]
+```
+
+For the multiclass classification I've chosen the random forest. The out-of-bag (OOB) rate is 0.76% according to cross-validation.
+```{r}
+modelFit <- train(classe ~ ., method="rf", data=train_train, prox=TRUE, allowParallel=TRUE, trControl = trainControl(method="cv", number=5))
+print(modelFit$finalModel)
+```
+
+Let us also evaluate out of sample error rate by train_test set (we know the real answers, let's see how good we are at predicting them).
+```{r}
+pred <- predict(modelFit, train_test)
+train_test$predRight <- pred == train_test$classe
+table(pred, train_test$classe)
+```
+
+OOB is 1.2% - that means that our model is not highly overfitted, and we are welcome to use it for practical purposes (actually, 1.2% error rate is good enough for most tasks).
+
+The final part of the project is predicting exercise classes for given test set. I used given function in order to finish the assignment.
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+predResult <- predict(modelFit, test)
+pml_write_files(predResult)
+```
+
+That's it! Thank you for the patience =)
